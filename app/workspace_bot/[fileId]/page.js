@@ -1,6 +1,6 @@
 "use client"
 import React, { useState } from 'react';
-import ChatInterface from '../_components/ChatInterface_Together_Llama';
+import ChatInterface from '../_components/ChatInterface';
 import WorkSpaceHeader from '../_components/WorkSpaceHeader';
 import PdfViewer from '../_components/PdfViewer';
 import { useParams } from 'next/navigation';
