@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@clerk/nextjs": "^5.6.3",
+    "@clerk/nextjs": "^5.2.0",
     "@google/generative-ai": "^0.21.0",
     "@huggingface/inference": "^2.8.1",
     "@langchain/community": "^0.3.11",
@@ -32,6 +32,7 @@
     "clsx": "^2.1.1",
     "convex": "^1.17.0",
     "dotenv": "^16.4.5",
+    "firebase": "^11.0.2",
     "formidable": "^3.5.2",
     "llama-ocr": "^0.0.6",
     "lucide-react": "^0.454.0",

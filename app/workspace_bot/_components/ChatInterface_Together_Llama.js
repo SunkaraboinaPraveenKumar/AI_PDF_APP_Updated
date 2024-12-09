@@ -4,14 +4,17 @@ import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAction } from "convex/react";
-import { Button } from "@/components/ui/button";
+import { storage } from "@/config/firebase";
+import { getDownloadURL, ref, uploadBytesResumable, deleteObject } from "firebase/storage";
 import axios from "axios";
+import Image from "next/image";
 
 function ChatInterface({ messages, setMessages }) {
     const [input, setInput] = useState("");
-    const [imagePath, setImagePath] = useState(""); // Store image path
-    const [isExtracting, setIsExtracting] = useState(false); // Track extraction process
-    const [extractedImageText, setExtractedImageText] = useState(""); // Store extracted text
+    const [isExtracting, setIsExtracting] = useState(false);
+    const [extractedImageText, setExtractedImageText] = useState("");
+    const [imagePreview, setImagePreview] = useState(null);
+    const [uploadedImageRef, setUploadedImageRef] = useState(null); // Store Firebase image reference
     const { fileId } = useParams();
     const searchAI = useAction(api.myAction.search);
 
@@ -48,7 +51,7 @@ function ChatInterface({ messages, setMessages }) {
                 User Input: "${input}"
                 Relevant Content: "${combinedText}"
                 Generate a fairly enough explanation based on context and
-                Extracted Image Text and User Input in HTML ignore if extracted Image Text not available just use  User Input and Relevant Content:
+                Extracted Image Text and User Input in HTML ignore if extracted Image Text not available just use User Input and Relevant Content:
             `;
 
             const aiResult = await chatSession.sendMessage(fullPrompt);
@@ -70,33 +73,62 @@ function ChatInterface({ messages, setMessages }) {
         }
 
         setInput("");
-        setImagePath(""); // Reset image path
-        setExtractedImageText(""); // Clear extracted text after sending
-    };
+        setExtractedImageText("");
+        setImagePreview(null);
 
-    const handleImagePathSubmit = async () => {
-        if (!imagePath) return; // Ensure there's a path before continuing
-    
-        setExtractedImageText(""); // Reset extracted text for new image
-        setIsExtracting(true); // Set extracting state to true
-    
-        // Clean up the image path (remove unwanted characters)
-        const cleanImagePath = imagePath.replace(/^"|"$/g, '').trim();
-    
-        try {
-            toast("Extracting content from the image...");
-            const ocrResponse = await axios.post("/api/ocr", { imagePath: cleanImagePath });
-            console.log(ocrResponse);
-            setExtractedImageText(ocrResponse.data.result);
-            toast("Content extracted successfully!");
-        } catch (error) {
-            console.error("Error extracting text from the image:", error);
-            toast("Failed to extract question from the image.");
-        } finally {
-            setIsExtracting(false); // Set extracting state to false
+        // Delete the image from Firebase after sending the message
+        if (uploadedImageRef) {
+            try {
+                await deleteObject(uploadedImageRef);
+                console.log("Image deleted from Firebase.");
+            } catch (error) {
+                console.error("Failed to delete image:", error);
+            }
+            setUploadedImageRef(null);
         }
     };
-    
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setIsExtracting(true);
+        setExtractedImageText("");
+        setImagePreview(URL.createObjectURL(file));
+
+        try {
+            toast("Uploading image...");
+
+            const storageRef = ref(storage, `uploaded-images/${Date.now()}_${file.name}`);
+            setUploadedImageRef(storageRef); // Store reference for later deletion
+            const uploadTask = uploadBytesResumable(storageRef, file);
+
+            uploadTask.on(
+                "state_changed",
+                null,
+                (error) => {
+                    console.error("Error uploading image:", error);
+                    toast("Failed to upload image.");
+                    setIsExtracting(false);
+                },
+                async () => {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                    console.log("Image uploaded successfully:", downloadURL);
+
+                    toast("Extracting content from the image...");
+                    const ocrResponse = await axios.post("/api/ocr", { imagePath: downloadURL });
+                    setExtractedImageText(ocrResponse.data.result);
+
+                    toast("Content extracted successfully!");
+                }
+            );
+        } catch (error) {
+            console.error("Error handling image upload:", error);
+            toast("Failed to extract text from the image.");
+        } finally {
+            setIsExtracting(false);
+        }
+    };
 
     return (
         <div className="flex flex-col max-w-3xl mx-auto p-4 bg-white rounded-lg shadow-lg h-full">
@@ -112,36 +144,38 @@ function ChatInterface({ messages, setMessages }) {
             </div>
 
             <div className="input-section flex flex-col gap-4 mb-7">
+                {imagePreview && (
+                    <div className="image-preview mb-4">
+                        <img src={imagePreview} alt="Uploaded preview" className="w-32 h-32 object-cover rounded-lg" />
+                    </div>
+                )}
                 <textarea
                     className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                     rows="4"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask a question..."
+                    disabled={isExtracting}
                 />
 
-                <div className="flex justify-between items-center gap-2">
+                <div className="flex items-center gap-2">
                     <input
-                        type="text"
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        value={imagePath}
-                        onChange={(e) => setImagePath(e.target.value)}
-                        placeholder="Enter image path or URL"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        id="upload-image"
                     />
-                    <Button
-                        onClick={handleImagePathSubmit}
-                        className="bg-blue-500 text-white p-3 rounded-lg shadow-md hover:bg-blue-600 focus:outline-none"
-                        disabled={isExtracting}
-                    >
-                        {isExtracting ? "Extracting..." : "Extract Text"}
-                    </Button>
-                    <Button
+                    <label htmlFor="upload-image" className="bg-blue-500 text-white p-3 rounded-lg cursor-pointer">
+                        <Image src={'/upload.png'} height={25} width={30} alt="upload" />
+                    </label>
+                    <button
                         onClick={handleSendMessage}
                         className="bg-green-500 text-white p-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none"
                         disabled={isExtracting}
                     >
                         {isExtracting ? "Extracting..." : "Send"}
-                    </Button>
+                    </button>
                 </div>
             </div>
         </div>
