@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 const { ocr } = require("llama-ocr");
 
+const API_KEY=process.env.NEXT_PUBLIC_TOGETHER_API_KEY;
+
 export async function POST(request) {
     if (request.method !== "POST") {
         return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
@@ -16,7 +18,7 @@ export async function POST(request) {
     try {
         const result = await ocr({
             filePath: imagePath,
-            apiKey: 'fcae42d55127788101f662b300aec4f2a4287b9541bc65a61bb024edd3a2b405',
+            apiKey: API_KEY,
             model: "Llama-3.2-11B-Vision",
         });
         return NextResponse.json({ result }, { status: 200 });

@@ -8,10 +8,13 @@ import { storage } from "@/config/firebase";
 import { getDownloadURL, ref, uploadBytesResumable, deleteObject } from "firebase/storage";
 import axios from "axios";
 import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { AudioLinesIcon, Mic } from "lucide-react";
 
 function ChatInterface({ messages, setMessages }) {
     const [input, setInput] = useState("");
     const [isExtracting, setIsExtracting] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
     const [extractedImageText, setExtractedImageText] = useState("");
     const [imagePreview, setImagePreview] = useState(null);
     const [uploadedImageRef, setUploadedImageRef] = useState(null); // Store Firebase image reference
@@ -20,6 +23,8 @@ function ChatInterface({ messages, setMessages }) {
 
     const chatContainerRef = useRef(null);
     const messageEndRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
 
     useEffect(() => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -130,6 +135,57 @@ function ChatInterface({ messages, setMessages }) {
         }
     };
 
+    const startRecording = () => {
+        setIsRecording(true);
+        audioChunksRef.current = [];
+        navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+            mediaRecorderRef.current = new MediaRecorder(stream);
+            mediaRecorderRef.current.ondataavailable = (event) => {
+                audioChunksRef.current.push(event.data);
+            };
+            mediaRecorderRef.current.onstop = handleAudioStop;
+            mediaRecorderRef.current.start();
+        });
+    };
+
+    const stopRecording = () => {
+        setIsRecording(false);
+        mediaRecorderRef.current?.stop();
+    };
+
+    const handleAudioStop = async () => {
+        if (!audioChunksRef.current || audioChunksRef.current.length === 0) {
+            toast("Please record something before stopping!");
+            return;
+        }
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        const audioFile = new File([audioBlob], "recording.wav", { type: "audio/wav" });
+
+    
+        toast("Transcribing voice...");
+        const formData = new FormData();
+        formData.append("file", audioFile);
+    
+        try {
+            const response = await axios.post("/api/voice-to-text", formData, {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            });
+    
+            if (response.status === 200) {
+                setInput(response.data.transcription);
+                toast("Voice transcription completed!");
+            } else {
+                toast("Failed to transcribe voice: " + (response.data.error || "Unknown error"));
+            }
+        } catch (error) {
+            console.error("Error transcribing voice:", error);
+            toast("Failed to transcribe voice.");
+        }
+    };
+    
+
     return (
         <div className="flex flex-col max-w-3xl mx-auto p-4 bg-white rounded-lg shadow-lg h-full">
             <div className="flex-grow overflow-y-auto mb-4 max-h-[400px]" ref={chatContainerRef}>
@@ -169,6 +225,16 @@ function ChatInterface({ messages, setMessages }) {
                     <label htmlFor="upload-image" className="bg-blue-500 text-white p-3 rounded-lg cursor-pointer">
                         <Image src={'/upload.png'} height={25} width={30} alt="upload" />
                     </label>
+                    <button
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={`p-3 rounded-lg shadow-md text-white ${isRecording ? "bg-red-500 hover:bg-red-600" : "bg-yellow-500 hover:bg-yellow-600"}`}
+                    >
+                        {isRecording ? 
+                        <AudioLinesIcon/>
+                        :
+                        <Mic/>
+                        }
+                    </button>
                     <button
                         onClick={handleSendMessage}
                         className="bg-green-500 text-white p-3 rounded-lg shadow-md hover:bg-green-600 focus:outline-none"
